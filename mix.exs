@@ -4,6 +4,8 @@ defmodule ExZRPC.MixProject do
   def project do
     [
       app: :exzrpc,
+      description: "Elixir RPC over ZeroMQ",
+      package: package(),
       version: "0.1.0",
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
@@ -14,6 +16,14 @@ defmodule ExZRPC.MixProject do
   def application do
     [
       extra_applications: [:logger]
+    ]
+  end
+
+  def package do
+    [
+      maintainers: ["Ukaza Perdana"],
+      licenses: ["MIT"],
+      links: %{GitHub: "https://github.com/ukazap/exzrpc"}
     ]
   end
 

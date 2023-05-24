@@ -51,7 +51,9 @@ defmodule ExZRPC.FunctionRoutes do
         case route do
           {mod, fun, arity} ->
             is_atom(mod) && is_atom(fun) && is_integer(arity) && arity >= 0
-          _ -> false
+
+          _ ->
+            false
         end
       end)
 

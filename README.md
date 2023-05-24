@@ -19,3 +19,12 @@ Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_do
 and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
 be found at <https://hexdocs.pm/exzrpc>.
 
+## ToDo
+
+- [x] Function allowlist/routing
+- [x] Simple REQ-REP sockets (single thread) implementation
+- [ ] Load-balanced implementation
+- [ ] Benchmark vs gRPC vs HTTP JSON API vs `:rpc.call/4` (Erlang distribution)
+- [ ] Usage documentation
+- [ ] Design documentation
+- [ ] Publish to Hex.pm
