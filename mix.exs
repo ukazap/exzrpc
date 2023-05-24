@@ -1,9 +1,9 @@
-defmodule OXRPC.MixProject do
+defmodule ExZRPC.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :oxrpc,
+      app: :exzrpc,
       version: "0.1.0",
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
@@ -19,7 +19,9 @@ defmodule OXRPC.MixProject do
 
   defp deps do
     [
-      {:credo, "~> 1.7", only: :dev}
+      {:chumak, "~> 1.4"},
+      {:credo, "~> 1.7", only: :dev},
+      {:nimble_pool, "~> 1.0"}
     ]
   end
 end

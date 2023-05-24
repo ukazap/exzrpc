@@ -1,8 +1,8 @@
 defmodule TelefunTest do
   use ExUnit.Case
-  doctest OXRPC
+  doctest ExZRPC
 
   test "greets the world" do
-    assert OXRPC.hello() == :world
+    assert ExZRPC.hello() == :world
   end
 end
