@@ -5,11 +5,17 @@ defmodule ExZRPC.FunctionRoutes do
   Unlike `:rpc`, we don't transmit module and function names over the wire.
   Each function is assigned a unique integer ID, and the client sends the ID based on this routing table.
 
-  ## Example
 
-    iex> function_list = [{Greeter, :hello, 1}, {Greeter, :goodbye, 1}, {Adder, :add, 2}]
+    # Instantiate a new routing table:
     iex> routes = ExZRPC.FunctionRoutes.new()
+    iex> ExZRPC.FunctionRoutes.empty?(routes)
+    true
+    # Register functions (list of tuples of `{module, function, arity}`):
+    iex> function_list = [{Greeter, :hello, 1}, {Greeter, :goodbye, 1}, {Adder, :add, 2}]
     iex> ExZRPC.FunctionRoutes.register_functions!(routes, function_list)
+    iex> ExZRPC.FunctionRoutes.empty?(routes)
+    false
+    # Route to ID and vice-versa:
     iex> ExZRPC.FunctionRoutes.route_to_id(routes, {Greeter, :hello, 1})
     0
     iex> ExZRPC.FunctionRoutes.route_to_id(routes, {Greeter, :goodbye, 1})
@@ -26,6 +32,7 @@ defmodule ExZRPC.FunctionRoutes do
     {Adder, :add, 2}
     iex> ExZRPC.FunctionRoutes.id_to_route(routes, 3)
     nil
+    # Convert route table to list (for transmitting to clients):
     iex> ExZRPC.FunctionRoutes.to_list(routes)
     [{Greeter, :hello, 1}, {Greeter, :goodbye, 1}, {Adder, :add, 2}]
   """
@@ -91,5 +98,10 @@ defmodule ExZRPC.FunctionRoutes do
       [{_, {module_name, function_name, arity}}] -> {module_name, function_name, arity}
       [] -> nil
     end
+  end
+
+  @spec empty?(t()) :: boolean()
+  def empty?({table, _}) do
+    :ets.info(table, :size) == 0
   end
 end

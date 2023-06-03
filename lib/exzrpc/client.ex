@@ -54,28 +54,26 @@ defmodule ExZRPC.Client do
   @impl NimblePool
   def init_pool(pool_state) do
     Application.ensure_all_started(:chumak)
+
+    routes = FunctionRoutes.new()
+    pool_state = Map.put(pool_state, :routes, routes)
+
     {:ok, pool_state}
   end
 
   @impl NimblePool
-  def init_worker(%{server: server} = pool_state) do
+  def init_worker(%{server: server, routes: routes} = pool_state) do
     {:ok, socket} = create_socket()
 
-    case Map.get(pool_state, :routes) do
-      nil ->
-        routes = FunctionRoutes.new()
-        pool_state = Map.put(pool_state, :routes, routes)
-
-        {:ok, peer} = connect_socket(socket, server)
-        :ok = :chumak.send(socket, Codec.encode(:list_routes))
-        {:ok, bin} = :chumak.recv(socket)
-        {:goodrpc, route_list} = Codec.decode(bin)
-        FunctionRoutes.register_functions!(routes, route_list)
-
-        {:ok, {socket, peer}, pool_state}
-
-      _ ->
-        {:ok, {socket, nil}, pool_state}
+    if FunctionRoutes.empty?(routes) do
+      {:ok, peer} = connect_socket(socket, server)
+      :ok = :chumak.send(socket, Codec.encode(:list_routes))
+      {:ok, bin} = :chumak.recv(socket)
+      {:goodrpc, route_list} = Codec.decode(bin)
+      FunctionRoutes.register_functions!(routes, route_list)
+      {:ok, {socket, peer}, pool_state}
+    else
+      {:ok, {socket, nil}, pool_state}
     end
   end
 
