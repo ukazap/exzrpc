@@ -44,7 +44,7 @@ defmodule ExRPCTest do
       )
 
       receive_timeout_ms = 1
-      {:badrpc, :timeout} = ExRPC.call(RPC.Client, Timer, :sleep, [350], receive_timeout_ms)
+      assert {:badrpc, :timeout} = ExRPC.call(RPC.Client, Timer, :sleep, [350], receive_timeout_ms)
     end
 
     test "call when server down should raise conn refused" do
@@ -53,14 +53,22 @@ defmodule ExRPCTest do
       start_supervised!({ExRPC.Server, name: RPC.Server, port: 5670, routes: function_list})
 
       # client-side
-      start_supervised!({ExRPC.Client, name: RPC.Client, host: "localhost", port: 5670})
+      start_supervised!({ExRPC.Client, name: RPC.Client, host: "localhost", port: 5670, pool_size: 5})
 
       # stop server
-      stop_supervised!(ExRPC.Server)
+      stop_supervised!({ExRPC.Server, RPC.Server})
 
-      {:badrpc, :closed} = ExRPC.call(RPC.Client, Greeter, :hello, ["world"])
+      Enum.each(1..1000, fn _ ->
+        assert {:badrpc, :disconnected} = ExRPC.call(RPC.Client, Greeter, :hello, ["world"])
+      end)
 
-      # TODO add test case when server start again
+      start_supervised!({ExRPC.Server, name: RPC.Server, port: 5670, routes: function_list})
+
+      Enum.each(1..1000, fn _ ->
+        ExRPC.call(RPC.Client, Greeter, :hello, ["world"])
+      end)
+
+      assert "Hello world" = ExRPC.call(RPC.Client, Greeter, :hello, ["world"])
     end
   end
 end
