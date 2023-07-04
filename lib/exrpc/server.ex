@@ -15,6 +15,15 @@ defmodule ExRPC.Server do
     Supervisor.start_link(__MODULE__, init_arg, name: opts[:name])
   end
 
+  @spec child_spec(keyword()) :: Supervisor.child_spec()
+  def child_spec(opts) do
+    %{
+      id: {__MODULE__, opts[:name]},
+      start: {__MODULE__, :start_link, [opts]},
+      type: :supervisor
+    }
+  end
+
   @impl Supervisor
   def init(init_arg) do
     routes =

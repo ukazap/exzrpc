@@ -3,6 +3,8 @@ defmodule ExRPC.Client do
 
   @behaviour NimblePool
 
+  require Logger
+
   alias ExRPC.Codec
   alias ExRPC.FunctionRoutes
 
@@ -12,15 +14,28 @@ defmodule ExRPC.Client do
     active: false
   ]
 
-  @timeout 30_000
+  @connect_timeout 10_000
 
   @type t :: pid() | atom()
 
   def start_link(opts) do
     {host, opts} = Keyword.pop!(opts, :host)
     {port, opts} = Keyword.pop!(opts, :port)
-    opts = Keyword.put(opts, :worker, {__MODULE__, %{server: {to_charlist(host), port}}})
+    {send_timeout, opts} = Keyword.pop(opts, :send_timeout, 10_000)
+
+    opts =
+      Keyword.put(opts, :worker, {__MODULE__, %{server: {to_charlist(host), port, send_timeout}}})
+
     NimblePool.start_link(opts)
+  end
+
+  @spec child_spec(keyword()) :: Supervisor.child_spec()
+  def child_spec(opts) do
+    %{
+      id: {__MODULE__, name: Keyword.fetch!(opts, :name)},
+      start: {__MODULE__, :start_link, [opts]},
+      type: :supervisor
+    }
   end
 
   @spec routes(t()) :: list()
@@ -30,18 +45,25 @@ defmodule ExRPC.Client do
     end)
   end
 
-  @spec call(t(), module(), atom(), list()) :: {:badrpc, atom} | {:badrpc, atom, binary} | any()
-  def call(client_pool, m, f, a) when is_atom(m) and is_atom(f) and is_list(a) do
+  @spec call(t(), module(), atom(), list(), integer() | atom()) ::
+          {:badrpc, atom} | {:badrpc, atom, binary} | any()
+  def call(client_pool, m, f, a, timeout \\ :infinity)
+      when is_atom(m) and is_atom(f) and is_list(a) do
     NimblePool.checkout!(client_pool, :checkout, fn _from, {socket, routes} ->
-      case FunctionRoutes.route_to_id(routes, {m, f, length(a)}) do
-        nil ->
-          {{:badrpc, :invalid_mfa}, :ok}
-
-        route_id ->
-          message = "!" <> :erlang.term_to_binary([route_id, a])
-          :ok = :gen_tcp.send(socket, message)
-          {:ok, bin} = :gen_tcp.recv(socket, 0)
-          {wrap_response(bin), :ok}
+      with socket when is_port(socket) <- socket,
+           route_id when is_integer(route_id) <-
+             FunctionRoutes.route_to_id(routes, {m, f, length(a)}),
+           message <- "!" <> :erlang.term_to_binary([route_id, a]),
+           :ok <- :gen_tcp.send(socket, message),
+           {:ok, bin} <- :gen_tcp.recv(socket, 0, timeout) do
+        {wrap_response(bin), :ok}
+      else
+        nil -> {{:badrpc, :invalid_mfa}, :ok}
+        {:error, :closed} = error -> {{:badrpc, :disconnected}, error}
+        {:error, :econnrefused} = error -> {{:badrpc, :disconnected}, error}
+        {:error, :econnreset} = error -> {{:badrpc, :disconnected}, error}
+        {:error, error} -> {{:badrpc, error}, :ok}
+        {:badrpc, error} -> {{:badrpc, error}, :ok}
       end
     end)
   end
@@ -54,17 +76,9 @@ defmodule ExRPC.Client do
     end
   end
 
-  @spec child_spec(keyword()) :: Supervisor.child_spec()
-  def child_spec(opts) do
-    %{
-      id: {__MODULE__, name: Keyword.fetch!(opts, :name)},
-      start: {__MODULE__, :start_link, [opts]}
-    }
-  end
-
   @impl NimblePool
-  def init_pool(%{server: {host, port}} = pool_state) do
-    with {:ok, socket} <- create_socket(host, port),
+  def init_pool(%{server: {host, port, send_timeout}} = pool_state) do
+    with {:ok, socket} <- create_socket(host, port, send_timeout),
          {:ok, mfa_list} <- fetch_mfa_list(socket),
          :ok <- :gen_tcp.close(socket),
          {:ok, routes} <- FunctionRoutes.create(mfa_list) do
@@ -78,8 +92,10 @@ defmodule ExRPC.Client do
     end
   end
 
-  defp create_socket(host, port) do
-    with {:ok, socket} <- :gen_tcp.connect(host, port, @opts, @timeout),
+  defp create_socket(host, port, send_timeout) do
+    opts = Keyword.put(@opts, :send_timeout, send_timeout)
+
+    with {:ok, socket} <- :gen_tcp.connect(host, port, opts, @connect_timeout),
          :ok <- :gen_tcp.controlling_process(socket, self()) do
       {:ok, socket}
     else
@@ -98,9 +114,17 @@ defmodule ExRPC.Client do
   end
 
   @impl NimblePool
-  def init_worker(%{server: {host, port}} = pool_state) do
-    {:ok, socket} = create_socket(host, port)
-    {:ok, socket, pool_state}
+  def init_worker(%{server: {host, port, send_timeout}} = pool_state) do
+    parent = self()
+
+    async_fn = fn ->
+      with {:ok, socket} <- :gen_tcp.connect(host, port, @opts, @connect_timeout),
+           :ok <- :gen_tcp.controlling_process(socket, parent) do
+        socket
+      end
+    end
+
+    {:async, async_fn, pool_state}
   end
 
   @impl NimblePool
@@ -111,5 +135,10 @@ defmodule ExRPC.Client do
   @impl NimblePool
   def handle_checkin(:ok, _from, socket, pool_state) do
     {:ok, socket, pool_state}
+  end
+
+  def handle_checkin({:error, reason}, _from, socket, pool_state) do
+    Logger.error("removing from pool #{inspect(socket)}, #{inspect(reason)}")
+    {:remove, reason, pool_state}
   end
 end
